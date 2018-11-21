@@ -11,6 +11,9 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 
 $app = new DPB\OpenGrokCLI\Application();
+$output = new Symfony\Component\Console\Output\ConsoleOutput();
+$output->setDecorated(true);
+
 $app->run(
     new Symfony\Component\Console\Input\ArgvInput(
         array_merge(
@@ -18,5 +21,6 @@ $app->run(
             array('opengrok-cli'),
             array_slice($argv, 1)
         )
-    )
+      ),
+      $output
 );

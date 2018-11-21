@@ -25,12 +25,17 @@ class RunCommand extends Command
                 array(
                     new InputArgument('query', InputArgument::REQUIRED, 'Search query'),
                     new InputOption('server', null, InputOption::VALUE_REQUIRED, 'The OpenGrok service address', getenv('OPENGROK_SERVER')),
+                    new InputOption('user', null, InputOption::VALUE_REQUIRED, 'The OpenGrok user ID', getenv('OPENGROK_USER')),
+                    new InputOption('password', null, InputOption::VALUE_REQUIRED, 'The OpenGrok user password', getenv('OPENGROK_PASSWORD')),
                     new InputOption('project', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Search project(s)', explode(',', getenv('OPENGROK_PROJECT'))),
                     new InputOption('list', 'l', InputOption::VALUE_NONE, 'Output distinct file list'),
                     new InputOption('max-count', 'm', InputOption::VALUE_REQUIRED, 'The maximum number of files shown', 1000),
                     new InputOption('no-lines', null, InputOption::VALUE_NONE, 'Do not output line numbers after the file names'),
                     new InputOption('null', null, InputOption::VALUE_NONE, 'Output a zero byte (the ASCII NUL character) instead of the character that normally follows a file name.'),
-                    new InputOption('path', null, InputOption::VALUE_REQUIRED, 'Optional file path to limit search', ''),
+                    new InputOption('path', 'p', InputOption::VALUE_REQUIRED, 'Optional file path to limit search', ''),
+                    new InputOption('type', 't', InputOption::VALUE_REQUIRED, 'Optional file type to limit search', ''),
+                    new InputOption('sort', 's', InputOption::VALUE_REQUIRED, 'Optional sort', 'relevancy'),
+                    new InputOption('verbose', 'v', InputOption::VALUE_NONE, 'Verbose output'),
                 )
             )
             ->setDescription('Command line tool for OpenGrok searches.')
@@ -40,24 +45,40 @@ class RunCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $project = $input->getOption('project');
+        $user = $input->getOption('user');
+        $pass = $input->getOption('password');
         $multiple = 1 < count($project);
         $color = $output->isDecorated();
 
+        $optVerbose = $input->getOption('verbose');
         $optList = $input->getOption('list');
         $optNull = $input->getOption('null');
         $optNoLine = $input->getOption('no-lines');
 
         $dom = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $auth = base64_encode("$user:$pass");
+        $context = stream_context_create(['http' => ['header' => "Authorization: Basic $auth"]]);
+        $api_url = rtrim($input->getOption('server'), '/')
+          . '/search?'
+          . '&n=' . $input->getOption('max-count')
+          . '&q=' . rawurlencode($input->getArgument('query'))
+          . '&project=' . implode('&project=', $project)
+          . '&path=' . rawurlencode($input->getOption('path'))
+          . '&type=' . rawurlencode($input->getOption('type'))
+          . '&sort=' . rawurlencode($input->getOption('sort'));
+
+        if ($optVerbose) {
+          $output->write("API URL = $api_url", true, OutputInterface::OUTPUT_RAW);
+        }
+
         $dom->loadHTML(
             file_get_contents(
-                rtrim($input->getOption('server'), '/')
-                    . '/search?'
-                    . '&n=' . $input->getOption('max-count')
-                    . '&q=' . rawurlencode($input->getArgument('query'))
-                    . '&project=' . implode('&project=', $project)
-                    . '&path=' . rawurlencode($input->getOption('path'))
-                    . '&sort=fullpath'
-            )
+                $api_url,
+                false,
+                $context
+            ),
+            LIBXML_NOWARNING
         );
 
         $xpath = new \DOMXPath($dom);
